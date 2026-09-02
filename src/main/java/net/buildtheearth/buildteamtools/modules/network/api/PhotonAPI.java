@@ -7,7 +7,11 @@ import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class PhotonAPI {
@@ -58,27 +62,37 @@ public class PhotonAPI {
             return "";
         }
 
-        String street = (String) properties.get("street");
-        String city = (String) properties.get("city");
-        String country = (String) properties.get("country");
-
-        return String.join(", ",
-                Stream.of(street, city, country)
-                        .filter(value -> !value.isBlank())
-                        .toList()
-        );
+        return Stream.of(
+                        properties.get("street"),
+                        properties.get("city"),
+                        properties.get("country")
+                )
+                .filter(Objects::nonNull)
+                .map(Object::toString)
+                .filter(value -> !value.isBlank())
+                .collect(Collectors.joining(", "));
     }
 
-    public static @NotNull CompletableFuture<GeographicalCoordinate> getCoordinatesFromAddressAsync(String address){
+    public static @NotNull CompletableFuture<GeographicalCoordinate> getCoordinatesFromAddressAsync(
+            @NotNull String address
+    ) {
         CompletableFuture<GeographicalCoordinate> future = new CompletableFuture<>();
 
-        String url = BASE_URL + "api/?=q" + address+ "&lang=en";
+        String url = BASE_URL + "api/?q="
+                + URLEncoder.encode(address, StandardCharsets.UTF_8)
+                + "&lang=en";
 
         API.getAsync(url, new API.ApiResponseCallback() {
             @Override
             public void onResponse(String response) {
-                GeographicalCoordinate coordinate = getGeoCoordinateFromResponse(response);
-                future.complete(coordinate);
+                try {
+                    GeographicalCoordinate coordinate =
+                            getGeoCoordinateFromResponse(response);
+
+                    future.complete(coordinate);
+                } catch (Exception e) {
+                    future.completeExceptionally(e);
+                }
             }
 
             @Override
@@ -90,7 +104,9 @@ public class PhotonAPI {
         return future;
     }
 
-    private static GeographicalCoordinate getGeoCoordinateFromResponse(String response) {
+    private static @NotNull GeographicalCoordinate getGeoCoordinateFromResponse(
+            @NotNull String response
+    ) {
         JSONObject jsonObject = API.createJSONObject(response);
 
         ChatHelper.logDebug("Response from Photon: %s", jsonObject);
@@ -98,28 +114,32 @@ public class PhotonAPI {
         JSONArray features = (JSONArray) jsonObject.get("features");
 
         if (features == null || features.isEmpty()) {
-            ChatHelper.logError("No address data found for these coordinates.");
-            return new GeographicalCoordinate(0,0);
+            throw new IllegalArgumentException(
+                    "No address data found for this address."
+            );
         }
 
         JSONObject feature = (JSONObject) features.getFirst();
+
         JSONObject geometry = (JSONObject) feature.get("geometry");
 
         if (geometry == null) {
-            ChatHelper.logError("No geometry found in Photon response.");
-            return new GeographicalCoordinate(0,0);
+            throw new IllegalArgumentException(
+                    "No geometry found in Photon response."
+            );
         }
 
         JSONArray coordinates = (JSONArray) geometry.get("coordinates");
 
         if (coordinates == null || coordinates.size() < 2) {
-            ChatHelper.logError("Invalid coordinates in Photon response.");
-            return null;
+            throw new IllegalArgumentException(
+                    "Invalid coordinates in Photon response."
+            );
         }
 
         double longitude = ((Number) coordinates.get(0)).doubleValue();
         double latitude = ((Number) coordinates.get(1)).doubleValue();
 
-        return new GeographicalCoordinate(latitude,longitude);
+        return new GeographicalCoordinate(latitude, longitude);
     }
 }
