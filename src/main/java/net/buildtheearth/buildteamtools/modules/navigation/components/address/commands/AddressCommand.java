@@ -2,9 +2,11 @@ package net.buildtheearth.buildteamtools.modules.navigation.components.address.c
 
 import com.alpsbte.alpslib.utils.ChatHelper;
 import net.buildtheearth.Projection;
+import net.buildtheearth.buildteamtools.BuildTeamTools;
 import net.buildtheearth.buildteamtools.modules.network.api.PhotonAPI;
 import net.buildtheearth.buildteamtools.modules.network.model.Permissions;
 import net.buildtheearth.model.GeographicalCoordinate;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -118,13 +120,21 @@ public class AddressCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        player.sendMessage("Teleporting to the address...");
 
         String address = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
 
         PhotonAPI.getCoordinatesFromAddressAsync(address)
                 .thenAccept(coordinates -> {
-                    player.sendMessage("Lon : " + coordinates.longitude() + " ; Lat : " + coordinates.latitude());
+                    double latitude = coordinates.latitude();
+                    double longitude = coordinates.longitude();
+                    player.sendMessage("Address found: " + address);
+                    player.sendMessage("Teleporting... ");
+                    Bukkit.getScheduler().runTask(
+                            BuildTeamTools.getInstance(),
+                            () -> player.performCommand(
+                                    "tpll " + latitude + " " + longitude
+                            )
+                    );
                 })
                 .exceptionally(error -> {
                     player.sendMessage(ChatHelper.getErrorComponent(error.getMessage()));
